@@ -1,0 +1,170 @@
+---
+description: Essential guidelines for building AI agents with the OpenAI Agents SDK.
+globs: 
+alwaysApply: true
+---
+# OpenAI Agents SDK: Quickstart Guide
+
+This document provides the core principles and essential steps for building AI agents using the OpenAI Agents SDK in Python.  It emphasizes best practices for security and project setup.
+
+## Core Concepts (In Order of Importance)
+
+1.  **Python Environment:** The OpenAI Agents SDK is a **Python** library. Ensure you have a working Python environment (preferably 3.7+), and it is recommended to use a virtual environment:
+
+    ```bash
+    python -m venv env  # Create a virtual environment named 'env'
+    source env/bin/activate  # Activate the environment (Linux/macOS)
+    # env\Scripts\activate  # Activate on Windows (CMD)
+    # env\Scripts\Activate.ps1 # Activate on windows (Powershell)
+    ```
+
+2.  **Installation:** Install the SDK using `pip`:
+
+    ```bash
+    pip install openai-agents
+    ```
+    This install openai and pydantic automatically.
+
+3.  **`requirements.txt`:**  Create a `requirements.txt` file in your project's root directory to manage dependencies. Add `openai-agents` to this file:
+
+    ```
+    openai-agents
+    ```
+    This allows for consistent installations across different envachine, a server).  You can install the dependencies using `pip install -r requirements.txt`.  If you need a specific version, use a version specifier (e.g., `openai-agents==0.1.0`).  Always include `openai` and `pydantic` in addition to `openai-agents`.
+
+4.  **API Key and Secrets Management (CRITICAL):**
+
+    *   **Obtain API Key:** Get your OpenAI API key from [https://platform.openai.com/](https://platform.openai.com/).  *Never* commit your actual API key (or any other secrets) directly into your code or version control (e.g., Git).
+    *   **.env.example:** Create a file named `.env.example` in your project's root.  This file serves as a *template* for environment variables.  It should *not* contain the actual secret values.  Example:
+
+        ```
+        OPENAI_API_KEY=your_openai_api_key_here
+        VECTOR_STORE_ID=your_vector_store_id_here
+        # Add any other secrets your agent needs here
+        OTHER_SECRET=another_secret_value_here
+        ```
+
+    *   **.env (Local):** Create a file named `.env` (also in the root).  This file is *local* and *should not be committed to version control*.  Copy the contents of `.env.example` into `.env` and replace the placeholder values with your *actual* secrets.
+        * **Important:** Add `.env` to your `.gitignore` file to prevent accidental commits.
+    *   **Loading Environment Variables:** Use a library like `python-dotenv` to load these variables into your Python application.  Install it:
+
+        ```bash
+        pip install python-dotenv
+        ```
+
+        Then, at the *top* of your main Python file (before importing `agents`):
+
+        ```python
+        from dotenv import load_dotenv
+        import os
+
+        load_dotenv()  # Load environment variables from .env
+
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        vector_store_id = os.getenv("VECTOR_STORE_ID")
+
+        # Now you can use openai_api_key and vector_store_id in your code.
+        ```
+
+    *   **Why this approach?** This keeps your secrets out of your codebase and version control, which is crucial for security.  `.env.example` provides a clear template for others (or your future self) to set up their own environment. `python-dotenv` makes it easy to load these variables during development.  In production, you'd typically set environment variables directly on the server/deployment environment.
+    * **Alternative In-Code (NOT RECOMMENDED):** You *can* use `agents.set_default_openai_key("sk-...")` within your Python code, but this is *strongly discouraged* for anything beyond quick testing. Environment variables are the best practice.
+
+5.  **Core Primitives:**
+    *   **`Agent`:** The fundamental building block. An `Agent` is an LLM configured with instructions, tools, guardrails, and handoffs. Create an agent like this:
+
+        ```python
+        from agents import Agent
+
+        agent = Agent(name="MyAgent", instructions="You are a helpful assistant.")
+        ```
+    *   **`Runner`:** Executes the agent's loop (interaction with the LLM, tool use, handoff, etc.). The agent loop continues until a *final output* is produced. Use `Runner.run_sync()` for synchronous execution or `Runner.run()` for asynchronous:
+        *   If `agent.output_type` is set, the loop runs until the LLM returns a structured output of that type.
+        *   If `agent.output_type` is *not* set (plain text), the loop runs until the LLM produces a message *without* any tool calls or handoffs.
+        *   Use the `max_turns` parameter of `Runner.run()` to limit the loop iterations.
+
+        ```python
+        from agents import Runner
+
+        result = Runner.run_sync(agent, "What is the capital of France?")
+        print(result.final_output)
+        ```
+
+    *   **`Tool`:**  Allows agents to interact with the external world (e.g., call functions, search the web, access files). The easiest way to create a tool is with the `@function_tool` decorator.  *Any* Python function can be turned into a tool.
+
+        ```python
+        from agents import function_tool
+
+        @function_tool
+        def get_current_weather(city: str) -> str:
+            """Gets the current weather for a given location."""
+            # ... (Implementation to fetch weather data - this is where you'd
+            #       make an API call to a weather service, for example) ...
+            return f"The weather in {city} is sunny."
+
+        agent = Agent(name="WeatherAgent", instructions="...", tools=[get_current_weather])
+        ```
+
+    *   **`Handoff`:**  Allows agents to delegate tasks to *other* agents.  This enables building complex, multi-agent workflows.  Use the `handoffs` parameter of the `Agent` constructor.
+
+        ```python
+        from agents import Agent, Runner, handoff
+        import asyncio
+
+        spanish_agent = Agent(name="SpanishAgent", instructions="You only speak Spanish.")
+        english_agent = Agent(name="EnglishAgent", instructions="You only speak English.")
+
+        triage_agent = Agent(
+            name="TriageAgent",
+            instructions="Handoff to the appropriate agent based on the language.",
+            handoffs=[spanish_agent, english_agent],
+        )
+
+        async def main():  # Handoff example often uses async/await
+            result = await Runner.run(triage_agent, input="Hola, ¿cómo estás?")
+            print(result.final_output)
+
+        if __name__ == "__main__":
+            asyncio.run(main())
+        ```
+    *   **`Guardrails`:**  Provide input and output validation to ensure your agent behaves as expected. Use `input_guardrails` and `output_guardrails` on the `Agent`.  Guardrails can trigger exceptions (`InputGuardrailTripwireTriggered`, `OutputGuardrailTripwireTriggered`) to halt execution.
+
+        ```python
+        from agents import Agent, input_guardrail, GuardrailFunctionOutput
+
+        @input_guardrail
+        def check_topic(context, agent, input_text: str):
+            if "politics" in input_text.lower():
+                return GuardrailFunctionOutput(tripwire_triggered=True, output_info="Topic not allowed")
+            return GuardrailFunctionOutput(tripwire_triggered=False)
+
+        agent = Agent(name="MyAgent", instructions="...", input_guardrails=[check_topic])
+
+        ```
+
+6.  **Tracing (Debugging/Monitoring):** The SDK provides built-in tracing to track agent runs, making debugging and optimization easier.  Enable verbose logging for development:
+
+    ```python
+    from agents import enable_verbose_stdout_logging
+    enable_verbose_stdout_logging()
+    ```
+
+    Traces are automatically uploaded to the OpenAI dashboard.  You can control whether sensitive data (inputs/outputs) is included in traces using the `trace_include_sensitive_data` parameter of `RunConfig`.
+
+7.  **Asynchronous Operations:** The SDK supports asynchronous operations using `async` and `await`.  Use `Runner.run()` for asynchronous execution.  Many examples (especially those with handoffs or complex tool use) will use `async def main(): ...` and `asyncio.run(main())`.
+
+8. **Model Compatibility:** The Agents SDK is compatible with any model provider supporting the OpenAI Chat Completions API format. The `model` parameter (of `Agent` or `RunConfig`) specifies the model to use.
+
+9. **Basic Example (Complete and Runnable):**
+
+    ```python
+    from agents import Agent, Runner
+    from dotenv import load_dotenv
+    import os
+
+    load_dotenv()  # Load environment variables from .env
+
+    agent = Agent(name="Assistant", instructions="You are a helpful assistant.")
+
+    result = Runner.run_sync(agent, "Write a haiku about recursion in programming.")
+    print(result.final_output)
+    ```

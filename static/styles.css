@@ -1,0 +1,672 @@
+:root {
+    --primary-color: #4285f4;
+    --primary-dark: #3367d6;
+    --secondary-color: #ffb142;
+    --dark-bg: #121212;
+    --darker-bg: #0a0a0a;
+    --sidebar-bg: #1e1e1e;
+    --chat-bg: #121212;
+    --light-text: #f0f0f0;
+    --muted-text: #a0a0a0;
+    --dark-text: #e0e0e0;
+    --border-color: #3a3a3a;
+    --message-user-bg: #294c91;
+    --message-agent-bg: #252525;
+    --message-system-bg: #303030;
+    --hover-color: #303030;
+    --font-sans: 'Manrope', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-sans);
+    background-color: var(--dark-bg);
+    color: var(--light-text);
+    line-height: 1.5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-container {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Sidebar styles */
+.sidebar {
+    width: 280px;
+    background-color: var(--sidebar-bg);
+    color: var(--light-text);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
+    border-right: 1px solid var(--border-color);
+}
+
+.logo {
+    padding: 24px 20px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.logo i {
+    font-size: 24px;
+    margin-right: 14px;
+    color: var(--secondary-color);
+    background: linear-gradient(135deg, var(--secondary-color), #ff7e5f);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.logo h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+nav ul {
+    list-style: none;
+    padding: 15px;
+}
+
+nav li {
+    margin-bottom: 5px;
+    border-radius: 8px;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+nav li.active {
+    background-color: rgba(66, 133, 244, 0.2);
+}
+
+nav li a {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    text-decoration: none;
+    color: var(--light-text);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+nav li a i {
+    margin-right: 12px;
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+    color: var(--primary-color);
+}
+
+/* Agents Section */
+.agents-section {
+    padding: 20px;
+    margin-top: 5px;
+}
+
+.agents-section h3 {
+    color: var(--muted-text);
+    font-size: 12px;
+    margin-bottom: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.agents-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.agents-list li {
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--light-text);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.agents-list li:hover {
+    background-color: var(--hover-color);
+    transform: translateX(5px);
+}
+
+.agents-list li i {
+    margin-right: 10px;
+    font-size: 14px;
+    color: #5e9aff;
+    width: 20px;
+    text-align: center;
+}
+
+/* Strategies Section */
+.strategies-section {
+    padding: 20px;
+    margin-top: 5px;
+}
+
+.strategies-section h3 {
+    color: var(--muted-text);
+    font-size: 12px;
+    margin-bottom: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.strategies-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.strategies-list li {
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--light-text);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.strategies-list li:hover {
+    background-color: var(--hover-color);
+    transform: translateX(5px);
+}
+
+.strategies-list li i {
+    margin-right: 10px;
+    font-size: 14px;
+    color: var(--secondary-color);
+    width: 20px;
+    text-align: center;
+}
+
+/* Main content styles */
+.main-content {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--dark-bg);
+}
+
+/* Chat panel styles */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+.chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) var(--dark-bg);
+}
+
+.chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: var(--dark-bg);
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 4px;
+}
+
+.message {
+    margin-bottom: 20px;
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+.message.user {
+    align-self: flex-end;
+}
+
+.message.assistant {
+    align-self: flex-start;
+}
+
+.message.system {
+    align-self: center;
+    max-width: 85%;
+    margin-bottom: 30px;
+}
+
+.message.error {
+    align-self: center;
+    max-width: 85%;
+    color: #e74c3c;
+}
+
+.message-content {
+    padding: 14px 18px;
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.user .message-content {
+    background-color: var(--message-user-bg);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.assistant .message-content {
+    background-color: var(--message-agent-bg);
+    color: var(--light-text);
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.system .message-content {
+    background-color: var(--message-system-bg);
+    color: var(--light-text);
+    border-radius: 12px;
+    text-align: center;
+    font-style: italic;
+}
+
+.message-content p {
+    margin: 0;
+    line-height: 1.6;
+}
+
+.message-content code {
+    font-family: 'Fira Code', 'Courier New', monospace;
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.message-content pre {
+    background-color: #1e1e1e;
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 10px 0;
+    border: 1px solid var(--border-color);
+}
+
+.message-content pre code {
+    background-color: transparent;
+    padding: 0;
+    display: block;
+}
+
+.chat-input {
+    display: flex;
+    padding: 20px;
+    background-color: var(--sidebar-bg);
+    border-top: 1px solid var(--border-color);
+}
+
+.chat-input input {
+    flex-grow: 1;
+    padding: 15px 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    font-size: 14px;
+    background-color: rgba(255, 255, 255, 0.05);
+    color: var(--light-text);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chat-input input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+}
+
+.chat-input input::placeholder {
+    color: var(--muted-text);
+}
+
+.chat-input button {
+    margin-left: 12px;
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 24px;
+    background-color: var(--primary-color);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.chat-input button:hover {
+    background-color: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+.chat-input button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Typing indicator */
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0;
+}
+
+.typing-indicator span {
+    height: 8px;
+    width: 8px;
+    margin: 0 2px;
+    background-color: #999;
+    border-radius: 50%;
+    display: inline-block;
+    animation: typing 1.5s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typing {
+    0% { transform: translateY(0); }
+    28% { transform: translateY(-5px); }
+    44% { transform: translateY(0); }
+}
+
+/* Connection status in footer */
+.sidebar-footer {
+    padding: 15px 20px;
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: var(--muted-text);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 10px;
+}
+
+.status-dot.connected {
+    background-color: #4CAF50;
+    box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+}
+
+.status-dot.disconnected {
+    background-color: #F44336;
+    box-shadow: 0 0 5px rgba(244, 67, 54, 0.5);
+}
+
+/* Trading Analysis Styling */
+.trading-analysis {
+    background-color: #1a1f2e;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    margin: 15px 0;
+    border: 1px solid #2a3040;
+    font-family: var(--font-sans);
+}
+
+.trading-analysis-header {
+    background: linear-gradient(135deg, #294c91, #1e3b6f);
+    color: white;
+    padding: 15px 20px;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #3a4a6c;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.trading-analysis-header .symbol {
+    font-weight: 700;
+    color: #fff;
+}
+
+.trading-analysis-header .timeframe {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 3px 8px;
+    border-radius: 4px;
+}
+
+.trading-analysis-content {
+    padding: 20px;
+}
+
+.trading-analysis-section {
+    margin-bottom: 20px;
+    border-bottom: 1px solid #2a3040;
+    padding-bottom: 15px;
+}
+
+.trading-analysis-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.trading-analysis-section-title {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 12px;
+    color: var(--secondary-color);
+    display: flex;
+    align-items: center;
+}
+
+.trading-analysis-section-title i {
+    margin-right: 8px;
+    opacity: 0.9;
+}
+
+.trading-analysis-list {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+.trading-analysis-list li {
+    padding: 6px 0;
+    display: flex;
+    align-items: flex-start;
+}
+
+.trading-analysis-list li:before {
+    content: "•";
+    color: var(--primary-color);
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+.trading-analysis-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.trading-analysis-data-point {
+    background-color: rgba(255, 255, 255, 0.05);
+    padding: 12px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.trading-analysis-data-label {
+    font-size: 12px;
+    color: var(--muted-text);
+    margin-bottom: 5px;
+}
+
+.trading-analysis-data-value {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.trading-setup {
+    background-color: rgba(41, 76, 145, 0.2);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-left: 3px solid var(--primary-color);
+}
+
+.trading-setup-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: var(--light-text);
+}
+
+.trading-setup-details {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.setup-detail {
+    display: flex;
+    flex-direction: column;
+}
+
+.setup-detail-label {
+    font-size: 11px;
+    color: var(--muted-text);
+    margin-bottom: 3px;
+}
+
+.setup-detail-value {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.bullish {
+    color: #4caf50;
+}
+
+.bearish {
+    color: #f44336;
+}
+
+.neutral {
+    color: #ff9800;
+}
+
+.risk-reward {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-weight: 600;
+    display: inline-block;
+    margin-top: 5px;
+}
+
+.risk-reward.good {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #81c784;
+}
+
+.risk-reward.moderate {
+    background-color: rgba(255, 152, 0, 0.2);
+    color: #ffb74d;
+}
+
+.risk-reward.poor {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #e57373;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+    .trading-analysis-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .trading-setup-details {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: auto;
+    }
+    
+    .main-content {
+        height: calc(100vh - 60px);
+    }
+    
+    .agent-section, .strategies-section {
+        display: none;
+    }
+    
+    .nav ul {
+        display: flex;
+        justify-content: space-around;
+    }
+}

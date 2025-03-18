@@ -1,0 +1,16 @@
+openai-agents
+python-dotenv
+ccxt
+pandas
+numpy
+matplotlib
+plotly
+ta-lib-python
+python-binance
+rich
+pydantic>=2.0.0
+redis
+fastapi
+uvicorn
+aiohttp
+websockets

@@ -1,0 +1,145 @@
+---
+description: This is how to build AI agents using the Responses API from OpenAI.
+globs: 
+alwaysApply: true
+---
+Developer quickstart
+Take your first steps with the OpenAI API.
+The OpenAI API provides a simple interface to state-of-the-art AI models for text generation, natural language processing, computer vision, and more. This example generates text output from a prompt, as you might using ChatGPT.
+
+Generate text from a model
+import OpenAI from "openai";
+const client = new OpenAI();
+
+const response = await client.responses.create({
+    model: "gpt-4o",
+    input: "Write a one-sentence bedtime story about a unicorn."
+});
+
+console.log(response.output_text);
+Data retention for model responses
+Configure your development environment
+Install and configure an official OpenAI SDK to run the code above.
+
+Responses starter app
+Start building with the Responses API
+
+Text generation and prompting
+Learn more about prompting, message roles, and building conversational apps.
+
+
+
+Analyze image inputs
+You can provide image inputs to the model as well. Scan receipts, analyze screenshots, or find objects in the real world with computer vision.
+
+Analyze the content of an image
+import OpenAI from "openai";
+const client = new OpenAI();
+
+const response = await client.responses.create({
+    model: "gpt-4o",
+    input: [
+        { role: "user", content: "What two teams are playing in this photo?" },
+        {
+            role: "user",
+            content: [
+                {
+                    type: "input_image", 
+                    image_url: "https://upload.wikimedia.org/wikipedia/commons/3/3b/LeBron_James_Layup_%28Cleveland_vs_Brooklyn_2018%29.jpg",
+                }
+            ],
+        },
+    ],
+});
+
+console.log(response.output_text);
+Computer vision guide
+Learn to use image inputs to the model and extract meaning from images.
+
+
+
+Extend the model with tools
+Give the model access to new data and capabilities using tools. You can either call your own custom code, or use one of OpenAI's powerful built-in tools. This example uses web search to give the model access to the latest information on the Internet.
+
+Get information for the response from the Internet
+import OpenAI from "openai";
+const client = new OpenAI();
+
+const response = await client.responses.create({
+    model: "gpt-4o",
+    tools: [ { type: "web_search_preview" } ],
+    input: "What was a positive news story from today?",
+});
+
+console.log(response.output_text);
+Use built-in tools
+Learn about powerful built-in tools like web search and file search.
+
+Function calling guide
+Learn to enable the model to call your own custom code.
+
+
+
+Deliver blazing fast AI experiences
+Using either the new Realtime API or server-sent streaming events, you can build high performance, low-latency experiences for your users.
+
+Stream server-sent events from the API
+import { OpenAI } from "openai";
+const client = new OpenAI();
+
+const stream = await client.responses.create({
+    model: "gpt-4o",
+    input: [
+        {
+            role: "user",
+            content: "Say 'double bubble bath' ten times fast.",
+        },
+    ],
+    stream: true,
+});
+
+for await (const event of stream) {
+    console.log(event);
+}
+Use streaming events
+Use server-sent events to stream model responses to users fast.
+
+Get started with the Realtime API
+Use WebRTC or WebSockets for super fast speech-to-speech AI apps.
+
+
+
+Build agents
+Use the OpenAI platform to build agents capable of taking action—like controlling computers—on behalf of your users. Use the Agent SDK for Python to create orchestration logic on the backend.
+
+from agents import Agent, Runner
+import asyncio
+
+spanish_agent = Agent(
+    name="Spanish agent",
+    instructions="You only speak Spanish.",
+)
+
+english_agent = Agent(
+    name="English agent",
+    instructions="You only speak English",
+)
+
+triage_agent = Agent(
+    name="Triage agent",
+    instructions="Handoff to the appropriate agent based on the language of the request.",
+    handoffs=[spanish_agent, english_agent],
+)
+
+
+async def main():
+    result = await Runner.run(triage_agent, input="Hola, ¿cómo estás?")
+    print(result.final_output)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+# ¡Hola! Estoy bien, gracias por preguntar. ¿Y tú, cómo estás?
+Build agents that can take action
+Learn how to use the OpenAI platform to build powerful, capable AI agents.

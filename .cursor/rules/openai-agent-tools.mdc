@@ -1,0 +1,164 @@
+---
+description: Essential guidelines for tools using the OpenAI Agents SDK and Responses API.
+globs: 
+alwaysApply: true
+---
+Core Principles:
+
+Responses API Only: All tool interactions must be performed through the client.responses.create() method. This is the core mechanism for agentic workflows.
+
+Tool Definitions: Tools are specified within the tools parameter of the responses.create() call. Each tool is a dictionary with a type key indicating the tool (e.g., "web_search_preview", "file_search", "computer_use_preview").
+
+Model Choice: Select an appropriate model. gpt-4o and gpt-4o-mini are mentioned as suitable options. Consider latency requirements. computer-use-preview is specifically for the "Computer Use" tool.
+
+Input: The user's query or instruction goes in the input parameter. This can be text or, for "Computer Use," a combination of text and image data.
+
+Tool Choice (Optional): Use the tool_choice parameter in responses.create() to force a specific tool. This is useful for predictable behavior and lower latency. Set tool_choice to {"type": "<tool_type>"} (e.g., {"type": "web_search_preview"}). If not used, the model will automatically determine which tool, if any to use.
+
+Output Handling: The response from client.responses.create() will contain an output field. This is a list. Inspect the type of each item in the list:
+
+"web_search_call": Indicates a web search was performed. The id is important for tracking.
+
+"message": Contains the model's generated text response (output_text). Includes citations (annotations) if web search or file search was used.
+
+"file_search_call": Indicates a file search was performed.
+
+"computer_call": Indicates the "Computer Use" tool suggests an action (click, type, scroll, etc.). This is crucial for the "Computer Use" loop.
+
+"reasoning": these items exist for the computer use tool.
+
+Citations (Web/File Search): When displaying results from web or file search, clearly display citations. The annotations field within the "message" output provides the necessary information (URL, title, location for web search; file ID, filename for file search). Make these citations clickable.
+
+Computer Use Loop (Computer Use Tool Only): The "Computer Use" tool requires a specific iterative process:
+
+Send initial request with tools=[{"type": "computer_use_preview", ...}] and user instruction in input.
+
+Receive response. If output contains a "computer_call", execute the suggested action (using Playwright, Docker, or a similar framework).
+
+Capture a screenshot of the updated state.
+
+Send a new request, including the screenshot as a "computer_call_output" in the input. Use previous_response_id to link requests, or manage conversation history manually.
+
+Repeat until no "computer_call" is received.
+
+handle reasoning calls appropriately.
+
+handle safety checks
+
+Safety Checks the computer use tool can return safety checks. Always handle these.
+
+## Example 1: Web Search
+
+from openai import OpenAI
+client = OpenAI()
+
+response = client.responses.create(
+    model="gpt-4o",
+    tools=[{"type": "web_search_preview"}],  # Define the web search tool
+    input="What's the latest news on AI safety?", #users request
+    #tool_choice={"type": "web_search_preview"} # Optional: Force web search
+)
+
+# Process the output:
+for item in response.output:
+    if item.type == "message":
+        print(item.content[0].text)  # Print the text response
+        for annotation in item.content[0].annotations:
+            if annotation.type == "url_citation":
+                print(f"  Citation: {annotation.title} - {annotation.url}") #print citations
+    elif item.type == "web_search_call":
+        print(f"Web search call ID: {item.id}")
+
+
+## Example 2: File Search
+
+from openai import OpenAI
+client = OpenAI()
+
+# ASSUME: You've already created a vector store with ID "vector_store_123"
+#         and uploaded files to it.
+
+response = client.responses.create(
+    model="gpt-4o-mini",
+    tools=[{
+        "type": "file_search",
+        "vector_store_ids": ["vector_store_123"]  # Specify the vector store
+    }],
+    input="Summarize the document about project timelines.",
+)
+#process the response in a similar manner to example 1
+for item in response.output:
+    if item.type == "message":
+        print(item.content[0].text)
+        for annotation in item.content[0].annotations:
+            if annotation.type == "file_citation":
+                print(f"  Citation: {annotation.filename} (ID: {annotation.file_id})")
+    elif item.type == "file_search_call":
+        print(f"File search call ID: {item.id}")
+
+## Example 3: Computer Use (Simplified - Illustrative)
+
+from openai import OpenAI
+import base64
+# ... (Assume you have functions: handle_action(action), get_screenshot()) ...
+
+client = OpenAI()
+
+# Initial request
+response = client.responses.create(
+    model="computer-use-preview",
+    tools=[{"type": "computer_use_preview", "display_width": 1024, "display_height": 768, "environment": "browser"}],
+    input=[{"role": "user", "content": "Open a new tab and go to openai.com"}],
+    truncation="auto"
+)
+
+while True: #start the loop
+    computer_calls = [item for item in response.output if item.type == "computer_call"]
+    if not computer_calls:
+        break  # Exit loop if no computer_call
+
+    computer_call = computer_calls[0]
+    action = computer_call.action
+    last_call_id = computer_call.call_id
+
+    # Execute the action (e.g., using Playwright)
+    handle_action(action)
+
+    # Get screenshot (implementation depends on your environment)
+    screenshot_bytes = get_screenshot()
+    screenshot_base64 = base64.b64encode(screenshot_bytes).decode("utf-8")
+    #create next request
+    next_input = [
+        {
+            "call_id": last_call_id,
+            "type": "computer_call_output",
+            "output": {
+                "type": "input_image",
+                "image_url": f"data:image/png;base64,{screenshot_base64}"
+            }
+        }
+    ]
+    #add reasoning if present from the previous response
+    reasoning_calls = [item for item in response.output if item.type == "reasoning"]
+    if reasoning_calls:
+        next_input.extend(reasoning_calls)
+    #check for safety checks
+    if computer_call.pending_safety_checks:
+        acknowledged_checks = []
+        for check in computer_call.pending_safety_checks:
+              #in a real application, get user confirmation here
+              print(f"Safety Check: {check.code} - {check.message}")
+              acknowledged_checks.append({
+                  "id": check.id,
+                  "code": check.code,
+                  "message": check.message
+              })
+        next_input[0]["acknowledged_safety_checks"] = acknowledged_checks
+    # Send the next request
+    response = client.responses.create(
+      model="computer-use-preview",
+      previous_response_id=response.id, #link requests
+      tools=[{"type": "computer_use_preview", "display_width": 1024, "display_height": 768, "environment": "browser"}],
+      input=next_input,
+      truncation="auto"
+    )
