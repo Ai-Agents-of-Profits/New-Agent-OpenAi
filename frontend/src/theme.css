@@ -1,0 +1,92 @@
+/* Theme definitions */
+:root {
+  /* Light theme colors (default) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --border-color: #e5e7eb;
+  --accent-color: #2563eb;
+  --accent-hover: #1d4ed8;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --bubble-user: #2563eb;
+  --bubble-agent: #ffffff;
+  --input-bg: #f3f4f6;
+}
+
+body.dark-theme {
+  /* Dark theme colors */
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-tertiary: #374151;
+  --text-primary: #f9fafb;
+  --text-secondary: #e5e7eb;
+  --text-muted: #9ca3af;
+  --border-color: #374151;
+  --accent-color: #3b82f6;
+  --accent-hover: #60a5fa;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --bubble-user: #1e40af;
+  --bubble-agent: #1f2937;
+  --input-bg: #374151;
+}
+
+/* Apply theme variables to classes */
+.theme-bg-primary {
+  background-color: var(--bg-primary);
+}
+
+.theme-bg-secondary {
+  background-color: var(--bg-secondary);
+}
+
+.theme-bg-tertiary {
+  background-color: var(--bg-tertiary);
+}
+
+.theme-text-primary {
+  color: var(--text-primary);
+}
+
+.theme-text-secondary {
+  color: var(--text-secondary);
+}
+
+.theme-text-muted {
+  color: var(--text-muted);
+}
+
+.theme-border {
+  border-color: var(--border-color);
+}
+
+.theme-accent {
+  color: var(--accent-color);
+}
+
+.theme-accent-bg {
+  background-color: var(--accent-color);
+}
+
+.theme-bubble-user {
+  background-color: var(--bubble-user);
+  color: white;
+}
+
+.theme-bubble-agent {
+  background-color: var(--bubble-agent);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.theme-input {
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+}
+
+/* Transitions for theme switching */
+.theme-transition {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
