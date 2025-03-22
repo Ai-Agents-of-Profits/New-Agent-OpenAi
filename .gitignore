@@ -49,6 +49,13 @@ yarn-error.log*
 .pnp
 .pnp.js
 
+# But include all frontend source code and configuration
+!frontend/src/
+!frontend/public/
+!frontend/*.json
+!frontend/*.js
+!frontend/*.md
+
 # IDE
 .idea/
 .vscode/

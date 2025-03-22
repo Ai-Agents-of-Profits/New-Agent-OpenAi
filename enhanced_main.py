@@ -17,7 +17,7 @@ if platform.system() == 'Windows':
     import asyncio
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from agents import Agent, Runner, Tool, function_tool
+from agents import Agent, Runner, Tool, function_tool, InputGuardrail, GuardrailFunctionOutput, handoff, InputGuardrailTripwireTriggered
 from src.agents.market_data_agent import MarketDataAgent
 from src.agents.orderbook_agent import OrderbookAnalysisAgent
 from src.agents.technical_agent import TechnicalAnalysisAgent
@@ -117,6 +117,204 @@ class TrailingStopParams(BaseModel):
 class GetBalanceParams(BaseModel):
     """Parameters for getting account balance."""
     exchange: Optional[str] = Field(None, description="Exchange ID (default: system's default exchange)")
+
+# Guardrail models for input validation
+class TradingRequestValidation(BaseModel):
+    """Model for validating trading-related requests."""
+    is_valid: bool = Field(..., description="Whether the request is valid for processing")
+    contains_sensitive_data: bool = Field(..., description="Whether the request contains sensitive data like API keys")
+    is_trade_related: bool = Field(..., description="Whether the request is related to trading")
+    reasoning: str = Field(..., description="Reasoning behind the validation decision")
+
+class MarketDataValidation(BaseModel):
+    """Model for validating market data requests."""
+    is_valid: bool = Field(..., description="Whether the request is valid for processing")
+    has_symbol: bool = Field(..., description="Whether the request includes a trading pair")
+    symbol: Optional[str] = Field(None, description="The trading pair identified in the request, if any")
+    reasoning: str = Field(..., description="Reasoning behind the validation decision")
+
+class TradeExecutionValidation(BaseModel):
+    """Model for validating trade execution requests."""
+    is_valid: bool = Field(..., description="Whether the trade request is valid for execution")
+    risk_level: str = Field(..., description="Risk level of the trade (low, medium, high)")
+    detected_symbol: Optional[str] = Field(None, description="Trading pair identified in the request")
+    detected_side: Optional[str] = Field(None, description="Trade direction (buy/sell) detected in the request")
+    has_risk_management: bool = Field(..., description="Whether the request includes proper risk management parameters")
+    position_size_appropriate: bool = Field(..., description="Whether the position size is within safe limits")
+    reasoning: str = Field(..., description="Reasoning behind the validation decision")
+
+# Guardrail agents
+guardrail_agent = Agent(
+    name="Request Validation Agent",
+    instructions="""
+    You are responsible for validating user requests before they are processed by the crypto trading system.
+    
+    Check for the following:
+    1. Does the request contain sensitive information like API keys or passwords?
+    2. Is the request related to cryptocurrency trading or market analysis?
+    3. Is the request clear and specific enough to be processed?
+    
+    Provide your reasoning for each validation check.
+    """,
+    output_type=TradingRequestValidation,
+    model="gpt-4.5-preview"
+)
+
+market_data_validation_agent = Agent(
+    name="Market Data Validation Agent",
+    instructions="""
+    You are responsible for validating market data requests.
+    
+    Check for the following:
+    1. Does the request specify a trading pair (e.g., BTC/USDT)?
+    2. If a trading pair is mentioned, identify it in the standard format (e.g., BTC/USDT).
+    3. Is the request about current price, market data, or trading information?
+    
+    Provide your reasoning for the validation.
+    """,
+    output_type=MarketDataValidation,
+    model="gpt-4.5-preview"
+)
+
+execution_validation_agent = Agent(
+    name="Trade Execution Validation Agent",
+    instructions="""
+    You are responsible for validating trade execution requests before they are processed by the execution agent.
+    
+    Check for the following safety and risk management criteria:
+    
+    1. Trade Identification:
+       - Does the request clearly specify a trading pair (e.g., BTC/USDT)?
+       - Is the trade direction (buy/sell) clearly specified?
+       - Does the request include a specific order type (market, limit, etc.)?
+    
+    2. Risk Assessment:
+       - Is a position size or trade amount specified? Is it reasonable (generally <5% of portfolio)?
+       - Does the request include risk management parameters (stop loss, take profit)?
+       - If using leverage, is it within safe limits (generally <10x)?
+    
+    3. Trade Context:
+       - Is there sufficient context/reasoning for the trade?
+       - Does the request follow proper risk-reward principles (min 1:2 ratio)?
+    
+    Classify the risk level as:
+    - Low: Proper position sizing (<2% of portfolio), has stop loss, moderate leverage (1-3x)
+    - Medium: Position sizing (2-5% of portfolio), has stop loss, moderate leverage (3-5x)
+    - High: Large position sizing (>5%), missing stop loss, high leverage (>5x)
+    
+    Identify the trading pair and direction (buy/sell) if present. If the request is to close a position,
+    this is considered inherently safer than opening a new position.
+    
+    Provide detailed reasoning for your assessment.
+    """,
+    output_type=TradeExecutionValidation,
+    model="gpt-4.5-preview"
+)
+
+# Guardrail functions
+async def trading_request_guardrail(ctx, agent, input_data):
+    """
+    Guardrail function to validate trading requests.
+    
+    Args:
+        ctx: Context object
+        agent: The agent being protected
+        input_data: User input to validate
+        
+    Returns:
+        GuardrailFunctionOutput with validation result
+    """
+    result = await Runner.run(guardrail_agent, input_data, context=ctx.context)
+    validation = result.final_output_as(TradingRequestValidation)
+    
+    # Build detailed response for invalid requests
+    tripwired = False
+    
+    if validation.contains_sensitive_data:
+        tripwired = True
+    elif not validation.is_valid:
+        tripwired = True
+    
+    return GuardrailFunctionOutput(
+        output_info=validation,
+        tripwire_triggered=tripwired
+    )
+
+async def market_data_guardrail(ctx, agent, input_data):
+    """
+    Guardrail function to validate market data requests.
+    
+    Args:
+        ctx: Context object
+        agent: The agent being protected
+        input_data: User input to validate
+        
+    Returns:
+        GuardrailFunctionOutput with validation result
+    """
+    result = await Runner.run(market_data_validation_agent, input_data, context=ctx.context)
+    validation = result.final_output_as(MarketDataValidation)
+    
+    # Add the detected symbol to context for future use
+    if validation.has_symbol and validation.symbol:
+        ctx.context["detected_symbol"] = validation.symbol
+    
+    return GuardrailFunctionOutput(
+        output_info=validation,
+        tripwire_triggered=not validation.is_valid
+    )
+
+async def execution_guardrail(ctx, agent, input_data):
+    """
+    Guardrail function to validate trade execution requests.
+    
+    Args:
+        ctx: Context object
+        agent: The agent being protected
+        input_data: User input to validate
+        
+    Returns:
+        GuardrailFunctionOutput with validation result and risk assessment
+    """
+    result = await Runner.run(execution_validation_agent, input_data, context=ctx.context)
+    validation = result.final_output_as(TradeExecutionValidation)
+    
+    # Add detected trading parameters to context
+    if validation.detected_symbol:
+        ctx.context["detected_symbol"] = validation.detected_symbol
+    if validation.detected_side:
+        ctx.context["detected_side"] = validation.detected_side
+    
+    # Add risk assessment to context
+    ctx.context["risk_level"] = validation.risk_level
+    ctx.context["has_risk_management"] = validation.has_risk_management
+    
+    # Determine if request should be blocked
+    # Block high-risk trades unless they have proper risk management
+    tripwired = not validation.is_valid or (validation.risk_level == "high" and not validation.has_risk_management)
+    
+    # Build detailed response for the agent to use if the guardrail passes
+    if not tripwired:
+        if validation.risk_level == "high":
+            ctx.context["risk_warning"] = """
+            ⚠️ WARNING: This trade has a HIGH RISK LEVEL. 
+            Please ensure you understand the risks involved and consider:
+            - Reducing position size
+            - Setting a stop loss
+            - Reducing leverage
+            """
+        elif validation.risk_level == "medium":
+            ctx.context["risk_warning"] = """
+            ⚠️ Note: This trade has a MEDIUM RISK LEVEL.
+            Consider implementing proper risk management:
+            - Confirm your stop loss placement
+            - Verify that position sizing is appropriate
+            """
+    
+    return GuardrailFunctionOutput(
+        output_info=validation,
+        tripwire_triggered=tripwired
+    )
 
 # Real implementation functions
 @function_tool
@@ -335,19 +533,49 @@ async def get_price(params: PriceParams):
             # Fetch ticker data directly
             ticker = await connector.fetch_ticker(symbol)
             
+            # Make sure ticker is not None before accessing
+            if ticker is None:
+                logger.error(f"Received None ticker data for {symbol} on {exchange}")
+                return {
+                    "symbol": symbol,
+                    "exchange": exchange,
+                    "error": "Failed to retrieve price data - no ticker data returned",
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+            # Safely extract the price with proper error handling
+            last_price = ticker.get('last')
+            if last_price is None:
+                price = 0.0
+            else:
+                try:
+                    price = float(last_price)
+                except (TypeError, ValueError):
+                    price = 0.0
+            
             # Extract just the price information
             return {
                 "symbol": symbol,
                 "exchange": exchange,
-                "price": float(ticker.get('last', 0.0) or 0.0),
+                "price": price,
                 "timestamp": datetime.now().isoformat()
             }
         except Exception as e:
             logger.error(f"Error retrieving price data: {e}")
-            return {"error": str(e)}
+            return {
+                "symbol": symbol,
+                "exchange": exchange,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
     except Exception as e:
         logger.error(f"Error retrieving price data: {e}")
-        return {"error": str(e)}
+        return {
+            "symbol": symbol,
+            "exchange": exchange,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
     finally:
         # Ensure proper cleanup of resources
         if connector:
@@ -861,9 +1089,10 @@ async def setup_crypto_agents():
     try:
         logger.info("Setting up specialized crypto market analysis agents...")
         
-        # Initialize specialized agents
+        # Initialize specialized agents with handoff descriptions
         orderbook_agent = Agent(
             name="Orderbook Analysis Agent",
+            handoff_description="Specialist agent for analyzing market depth, liquidity distributions, and order book patterns",
             instructions="""
             You are the Orderbook Analysis Agent, specialized in analyzing market depth and liquidity.
             
@@ -878,12 +1107,17 @@ async def setup_crypto_agents():
             
             Provide detailed insights about market structure and potential price action based on order book analysis.
             """,
-            tools=[analyze_orderbook]
+            tools=[analyze_orderbook],
+            model="gpt-4.5-preview",
+            input_guardrails=[
+                InputGuardrail(guardrail_function=market_data_guardrail)
+            ]
         )
         
         # Create the technical analysis agent
         technical_agent = Agent(
             name="Technical Analysis Agent",
+            handoff_description="Specialist agent for technical chart analysis, indicators, and pattern recognition",
             instructions="""
             You are the Technical Analysis Agent, specialized in analyzing price charts and indicators.
             
@@ -897,12 +1131,17 @@ async def setup_crypto_agents():
             
             Provide insights about potential price movements based on technical analysis.
             """,
-            tools=[perform_technical_analysis]
+            tools=[perform_technical_analysis],
+            model="gpt-4.5-preview",
+            input_guardrails=[
+                InputGuardrail(guardrail_function=market_data_guardrail)
+            ]
         )
         
         # Create the market data agent
         market_data_agent = Agent(
             name="Market Data Agent",
+            handoff_description="Specialist agent for current market prices, summaries, and volume data",
             instructions="""
             You are the Market Data Agent, specialized in retrieving current market data.
             
@@ -926,12 +1165,17 @@ async def setup_crypto_agents():
             
             Always maintain a helpful, informative tone and explain complex concepts in clear terms.
             """,
-            tools=[get_price, get_market_summary]
+            tools=[get_price, get_market_summary],
+            model="gpt-4.5-preview",
+            input_guardrails=[
+                InputGuardrail(guardrail_function=market_data_guardrail)
+            ]
         )
         
         # Create the token dashboard agent
         token_dashboard_agent = Agent(
             name="Token Dashboard Agent",
+            handoff_description="Specialist agent for comprehensive token analysis combining multiple data sources",
             instructions="""
             You are the Token Dashboard Agent, specialized in providing comprehensive token analysis.
             
@@ -950,12 +1194,17 @@ async def setup_crypto_agents():
             Deliver comprehensive, multi-faceted analysis that gives users a complete picture of a token's
             current market status and potential future movements.
             """,
-            tools=[get_token_dashboard]
+            tools=[get_token_dashboard],
+            model="gpt-4.5-preview",
+            input_guardrails=[
+                InputGuardrail(guardrail_function=market_data_guardrail)
+            ]
         )
         
         # Create the execution agent
         execution_agent = Agent(
             name="Execution Agent",
+            handoff_description="Specialist agent for executing trades and managing positions and orders",
             instructions="""
             You are the Execution Agent, specialized in executing trades and managing positions.
 
@@ -978,10 +1227,14 @@ async def setup_crypto_agents():
                 set_leverage,
                 set_trailing_stop,
                 get_balance
+            ],
+            model="gpt-4.5-preview",
+            input_guardrails=[
+                InputGuardrail(guardrail_function=execution_guardrail)
             ]
         )
         
-        # Create the main orchestration agent
+        # Create the main orchestration agent with handoffs to specialized agents
         main_agent = Agent(
             name="Crypto Market Analysis Orchestrator",
             instructions="""
@@ -1060,151 +1313,206 @@ async def setup_crypto_agents():
                     tool_name="get_balance",
                     tool_description="Get account balance information from the exchange"
                 )
+            ],
+            model="gpt-4.5-preview",
+            input_guardrails=[
+                InputGuardrail(guardrail_function=trading_request_guardrail)
+            ],
+            handoffs=[
+                market_data_agent,
+                orderbook_agent,
+                technical_agent,
+                token_dashboard_agent,
+                execution_agent
             ]
         )
         
         logger.info("All specialized crypto market analysis agents have been set up successfully!")
-        
         return main_agent
     
     except Exception as e:
-        logger.error(f"Error setting up crypto agents: {e}")
+        logger.error(f"Error setting up crypto market analysis agents: {e}")
         raise
 
-async def handle_user_message(message_text: str, user_id: str, session_id: str = None) -> str:
+class ConversationHistory:
+    def __init__(self):
+        self.messages = []
+    
+    def add_user_message(self, message):
+        self.messages.append({"role": "user", "content": message})
+    
+    def add_assistant_message(self, message):
+        self.messages.append({"role": "assistant", "content": message})
+    
+    def get_input_list(self):
+        return self.messages.copy()
+    
+    def clear(self):
+        self.messages = []
+
+async def handle_user_message(message_text: str, conversation_history: Optional[ConversationHistory] = None):
     """
-    Process a user message and generate a response.
+    Process a user message and return the agent's response.
     
     Args:
-        message_text: The message from the user
-        user_id: Unique user identifier
-        session_id: Optional session identifier
+        message_text: The user's message text
+        conversation_history: Optional conversation history to maintain context
         
     Returns:
-        Assistant response message
+        The agent's response as a string
     """
-    logger.info(f"Processing message: {message_text}")
+    # Ensure the agent is initialized
+    if not hasattr(handle_user_message, "main_agent"):
+        handle_user_message.main_agent = await setup_crypto_agents()
     
-    # Check if this is a trade execution request
-    if message_text.lower().startswith("execute") or message_text.lower().startswith("excute"):
-        return await process_execution_request(message_text)
+    # Create a new conversation history if none is provided
+    if conversation_history is None:
+        conversation_history = ConversationHistory()
     
-    # Regular chat processing
+    # Add the user message to the history
+    conversation_history.add_user_message(message_text)
+    
+    # Run the agent with the user's message and conversation history
     try:
-        # Initialize or get existing conversation manager
-        conversation_manager = get_conversation_manager(user_id)
-        
-        # Add the user message to the conversation
-        conversation_manager.add_message("user", message_text)
-        
-        # Process with the main agent
-        response = await main_agent.arun(prompt=message_text)
-        
-        # Add the assistant's response to the conversation
-        conversation_manager.add_message("assistant", response)
-        
-        return response
-    except Exception as e:
-        logger.exception(f"Error processing message: {e}")
-        return f"I encountered an error while processing your message: {str(e)}"
-
-async def process_execution_request(message_text: str) -> str:
-    """
-    Process a trade execution request.
-    
-    Args:
-        message_text: The execution request message
-        
-    Returns:
-        Response confirming execution or error
-    """
-    try:
-        # Extract the order part from the message
-        order_text = re.search(r'(?:execute|excute)\s+this\s+order\s+"(.+)"', message_text, re.IGNORECASE | re.DOTALL)
-        
-        if not order_text:
-            return "I couldn't understand the order details. Please provide your order in a clear format."
-        
-        # Parse the order
-        order_params = OrderParser.parse_order(order_text.group(1))
-        
-        # Validate essential parameters
-        missing_params = []
-        if not order_params.get("symbol"):
-            missing_params.append("Trading pair symbol")
-        if not order_params.get("amount") and not order_params.get("position_percentage"):
-            missing_params.append("Position size")
-        
-        if missing_params:
-            return f"I couldn't execute your order because the following information is missing: {', '.join(missing_params)}"
-        
-        # Execute the order
-        result = await OrderParser.execute_order(order_params)
-        
-        if result["success"]:
-            response = f"""
-✅ **Order Executed Successfully**
-
-**Details:**
-- **Trading Pair:** {order_params['symbol']}
-- **Side:** {order_params['side'].upper()}
-- **Type:** {order_params['order_type'].upper()}
-- **Amount:** {order_params['amount'] or f"{order_params['position_percentage']}% of balance"}
-- **Leverage:** {order_params['leverage']}x
-
-**Risk Management:**
-"""
-            if result.get("stop_loss"):
-                response += f"- **Stop Loss:** Set at ${order_params['stop_loss']}\n"
-            
-            if result.get("take_profit"):
-                response += f"- **Take Profit:** Set at ${order_params['take_profit']}\n"
-            
-            if result.get("additional_take_profits"):
-                tp_levels = order_params.get("take_profit_levels", [])[1:]
-                response += f"- **Additional Take Profit Levels:** {', '.join([f'${level}' for level in tp_levels])}\n"
-            
-            return response
+        # If we have previous conversation context, use the full history
+        if len(conversation_history.messages) > 1:
+            result = await Runner.run(handle_user_message.main_agent, conversation_history.get_input_list())
         else:
-            return f"❌ **Order Execution Failed**\n\nError: {result['error']}\n\nPlease check your order details and try again."
-    
+            # For the first message, just use the message directly
+            result = await Runner.run(handle_user_message.main_agent, message_text)
+        
+        # Add the response to the conversation history
+        response = result.final_output
+        conversation_history.add_assistant_message(response)
+        
+        return response, conversation_history
+        
+    except InputGuardrailTripwireTriggered as e:
+        # Handle input guardrail exceptions
+        print("\n⚠️ **Guardrail Alert**")
+        print("-----------------")
+        
+        # Create a generic guardrail response
+        response = """
+I've detected that your request may not meet our processing requirements.
+
+This could be because:
+- Your request lacks specific information (like a trading pair)
+- It contains potentially sensitive information
+- It's not related to cryptocurrency trading or market analysis
+
+Please try again with a more specific cryptocurrency-related question.
+For example:
+- "What's the current price of BTC/USDT?"
+- "Analyze the technical indicators for ETH/USD"
+- "Show me the order book for SOL/USDT"
+        """
+        
+        # Reset conversation history when guardrail is triggered
+        conversation_history.clear()
+        
+        return response, conversation_history
+                
     except Exception as e:
-        logger.exception(f"Error processing execution request: {e}")
-        return f"I encountered an error while trying to execute your order: {str(e)}"
+        logger.exception(f"Error handling user message: {e}")
+        # Reset conversation history on error
+        conversation_history.clear()
+        return f"I encountered an error processing your request: {str(e)}", conversation_history
 
 async def main():
-    """Main function to run the enhanced crypto market analysis agent system."""
+    """Main entry point for the CLI interface."""
+    print("Enhanced Crypto Market Analysis System - Type 'exit' to quit")
+    print("----------------------------------------------------------")
+    
+    # Initialize the agent
     try:
-        agent = await setup_crypto_agents()
-        
-        print("Enhanced Crypto Market Analysis System - Type 'exit' to quit")
-        print("----------------------------------------------------------")
-        
-        while True:
+        main_agent = await setup_crypto_agents()
+    except Exception as e:
+        logger.error(f"Failed to initialize the agent system: {e}")
+        return
+    
+    # Initialize conversation history to maintain context
+    conversation_history = ConversationHistory()
+    
+    while True:
+        try:
+            # Get user input
             user_input = input("\nEnter your question (or 'exit' to quit): ")
             
+            # Check for exit command
             if user_input.lower() == 'exit':
-                print("Exiting the agent system. Goodbye!")
+                print("Thank you for using the Crypto Market Analysis System. Goodbye!")
                 break
+            
+            # Check for conversation reset command
+            if user_input.lower() == 'new topic' or user_input.lower() == 'reset':
+                conversation_history.clear()
+                print("Starting a new conversation.")
+                continue
                 
+            print("\nProcessing your request...")
+            
+            # Add user message to history
+            conversation_history.add_user_message(user_input)
+            
+            # Process the user input
             try:
-                print("\nProcessing your request...")
+                # Use conversation history to maintain context
+                if len(conversation_history.messages) > 1:
+                    # For follow-up questions, use the full history
+                    result = await Runner.run(main_agent, conversation_history.get_input_list())
+                else:
+                    # For the first question, just use the direct input
+                    result = await Runner.run(main_agent, user_input)
                 
-                # Run the agent
-                result = await Runner.run(agent, user_input)
+                # Add assistant response to history
+                conversation_history.add_assistant_message(result.final_output)
                 
                 # Display the response
-                print("\n🤖 Agent Response:")
+                print("\n**Agent Response:**")
                 print("-----------------")
                 print(result.final_output)
                     
+            except InputGuardrailTripwireTriggered as e:
+                # Handle input guardrail exceptions
+                print("\n⚠️ **Guardrail Alert**")
+                print("-----------------")
+                
+                print("""
+I've detected that your request may not meet our processing requirements.
+
+This could be because:
+- Your request lacks specific information (like a trading pair)
+- It contains potentially sensitive information
+- It's not related to cryptocurrency trading or market analysis
+
+Please try again with a more specific cryptocurrency-related question.
+For example:
+- "What's the current price of BTC/USDT?"
+- "Analyze the technical indicators for ETH/USD"
+- "Show me the order book for SOL/USDT"
+                """)
+                
+                # Reset conversation history when guardrail is triggered
+                conversation_history.clear()
+                
             except Exception as e:
                 logger.error(f"Error processing request: {e}")
-                print(f"\nAn error occurred while processing your request: {e}")
+                print(f"\nAn error occurred while processing your request: {str(e)}")
+                # Reset conversation on error
+                conversation_history.clear()
                 
+        except KeyboardInterrupt:
+            print("\nOperation canceled. Type 'exit' to quit or continue with another question.")
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
+            print(f"\nAn unexpected error occurred: {str(e)}")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nOperation interrupted. Exiting...")
     except Exception as e:
         logger.error(f"Error in main function: {e}")
         print(f"\nFailed to initialize the agent system: {e}")
-
-if __name__ == "__main__":
-    asyncio.run(main())

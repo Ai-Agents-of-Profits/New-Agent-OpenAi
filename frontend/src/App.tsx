@@ -2,6 +2,30 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { strategyPrompts, strategyDescriptions } from './data/tradingStrategies';
 
+// Custom CSS classes for styling based on the provided theme preferences
+const customStyles = {
+  gradientBg: 'bg-gradient-to-br from-gray-900 to-gray-800',
+  accentColor: 'text-purple-500',
+  accentBg: 'bg-purple-600',
+  accentHover: 'hover:bg-purple-700',
+  buttonGradient: 'bg-gradient-to-r from-purple-600 to-pink-500',
+  buttonHoverGradient: 'hover:from-purple-700 hover:to-pink-600',
+  cardBg: 'bg-gray-800',
+  borderColor: 'border-purple-500/30',
+  textPrimary: 'text-white',
+  textSecondary: 'text-gray-300',
+  inputBg: 'bg-gray-700',
+  fontDisplay: 'font-display',
+  fontBody: 'font-body',
+  sidebarGradient: 'bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900',
+  cardGradient: 'bg-gradient-to-br from-gray-800 to-gray-900',
+  agentCardGlow: 'bg-gradient-to-r from-purple-900/10 via-purple-800/5 to-transparent',
+  activeAgentGlow: 'from-purple-900/20 via-purple-800/10 to-transparent',
+  menuItemHover: 'hover:bg-white/5',
+  inputFocus: 'focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50',
+  buttonShadow: 'shadow-lg shadow-purple-500/20',
+};
+
 interface Message {
   id: string;
   text: string;
@@ -13,7 +37,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',
-      text: 'Welcome to the Trading Assistant! I coordinate specialized agents for market analysis, technical analysis, orderbook analysis, token dashboards, and trade execution. How can I assist you today?',
+      text: 'Welcome to the Trading Agent! I coordinate specialized agents for market analysis, technical analysis, orderbook analysis, token dashboards, and trade execution. How can I assist you today?',
       sender: 'agent',
       timestamp: new Date(),
     },
@@ -24,6 +48,32 @@ function App() {
   const [darkMode, setDarkMode] = useState(true); // Default to dark mode
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const ws = useRef<WebSocket | null>(null);
+
+  // Load saved messages from localStorage on initial load
+  useEffect(() => {
+    const savedMessages = localStorage.getItem('trading-assistant-messages');
+    if (savedMessages) {
+      try {
+        // Parse the saved messages and convert timestamps back to Date objects
+        const parsedMessages: Message[] = JSON.parse(savedMessages).map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+        if (parsedMessages.length > 0) {
+          setMessages(parsedMessages);
+        }
+      } catch (e) {
+        console.error('Error loading saved messages:', e);
+      }
+    }
+  }, []);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    if (messages.length > 1) { // Only save if there are messages beyond the welcome message
+      localStorage.setItem('trading-assistant-messages', JSON.stringify(messages));
+    }
+  }, [messages]);
 
   useEffect(() => {
     // Connect to WebSocket
@@ -51,6 +101,15 @@ function App() {
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           text: `Error: ${data.data}`,
+          sender: 'agent',
+          timestamp: new Date(),
+        }]);
+      } else if (data.type === 'system') {
+        // Handle system messages like conversation reset confirmation
+        setIsProcessing(false);
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          text: data.data,
           sender: 'agent',
           timestamp: new Date(),
         }]);
@@ -105,8 +164,35 @@ function App() {
     setDarkMode(!darkMode);
   };
 
+  // Check if the input is a reset command
+  const isResetCommand = (text: string): boolean => {
+    const lowerText = text.toLowerCase().trim();
+    return lowerText === 'reset' || lowerText === 'new topic' || lowerText === 'clear history';
+  };
+
   const handleSend = () => {
     if (input.trim() === '' || isProcessing) return;
+    
+    // Check if the user is requesting to reset the conversation
+    if (isResetCommand(input)) {
+      // Add the reset command as a user message
+      const newMessage: Message = {
+        id: Date.now().toString(),
+        text: input,
+        sender: 'user',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, newMessage]);
+      setInput('');
+      
+      // Send the reset command to the server
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ message: input }));
+      }
+      
+      setIsProcessing(true);
+      return;
+    }
     
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -188,98 +274,119 @@ function App() {
   const handleClearChat = () => {
     // Keep only the first message (welcome message)
     setMessages(messages.length > 0 ? [messages[0]] : []);
+    // Also clear localStorage
+    localStorage.removeItem('trading-assistant-messages');
+    
+    // Send a reset command to the server to clear conversation history on the backend
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ message: "reset" }));
+    }
   };
 
   return (
-    <div className="flex h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className={`flex h-screen ${customStyles.gradientBg} ${customStyles.fontBody}`}>
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
         <div 
-          className="md:hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-20"
+          className="md:hidden fixed inset-0 bg-gray-900 bg-opacity-70 z-20 backdrop-blur-sm"
           onClick={() => setIsMobileSidebarOpen(false)}
         ></div>
       )}
       
       {/* Sidebar */}
-      <div className={`${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:sticky top-0 left-0 h-full w-72 transition-transform duration-300 ease-in-out z-30 md:z-0 flex flex-col ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-100' : 'bg-white border-gray-200'} border-r`}>
+      <div className={`${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:sticky top-0 left-0 h-full w-72 transition-transform duration-300 ease-in-out z-30 md:z-0 flex flex-col ${customStyles.sidebarGradient} border-r ${customStyles.borderColor} ${customStyles.textPrimary}`}>
         {/* Sidebar Header */}
-        <div className={`px-6 py-6 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <h1 className={`text-xl font-bold flex items-center ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className={`px-6 py-6 border-b ${customStyles.borderColor} bg-gradient-to-r from-purple-900/20 to-transparent`}>
+          <h1 className={`text-xl ${customStyles.fontDisplay} font-bold flex items-center bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            Profitmus
+            Agent of Profits
           </h1>
-          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Powered by Open AI Agent</p>
+          <p className="text-sm mt-1 text-gray-400">Powered by Open AI Agent</p>
         </div>
         
         {/* Sidebar Content - Make this section scrollable */}
         <div className="flex-1 overflow-y-auto">
           <div className="p-6">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Available Agents</h2>
-            <div className="mt-3 mb-4">
-              <div className="flex items-center text-gray-700 px-3 py-2 mb-2 rounded-md bg-blue-50 border-l-4 border-blue-500">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                <span className="font-semibold">Orchestration Agent</span>
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Available Agents</h2>
+            <div className="mt-3 mb-6">
+              <div className={`flex items-center text-white px-4 py-3 mb-2 rounded-md bg-gradient-to-r ${customStyles.activeAgentGlow} border-l-4 ${customStyles.borderColor}`}>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mr-3 shadow-lg shadow-purple-500/20">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <span className="font-semibold block">Orchestration Agent</span>
+                  <span className="text-xs text-gray-400">Coordinates all specialized agents</span>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 px-3">Coordinates all specialized agents based on your questions</p>
             </div>
             
-            <h3 className="text-xs font-semibold text-gray-500 px-3 mb-2">Specialized Agents:</h3>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Specialized Agents:</h3>
             <div className="space-y-2">
-              <div className="flex items-center text-gray-700 px-3 py-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                <span>Execution Agent</span>
+              <div className={`flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${customStyles.menuItemHover} ${customStyles.agentCardGlow}`}>
+                <div className="w-8 h-8 rounded-full border border-purple-500/30 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+                <span className="text-sm">Execution Agent</span>
               </div>
-              <div className="flex items-center text-gray-700 px-3 py-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                </svg>
-                <span>Technical Analysis Agent</span>
+              <div className={`flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${customStyles.menuItemHover} ${customStyles.agentCardGlow}`}>
+                <div className="w-8 h-8 rounded-full border border-purple-500/30 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                  </svg>
+                </div>
+                <span className="text-sm">Technical Analysis Agent</span>
               </div>
-              <div className="flex items-center text-gray-700 px-3 py-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span>Market Data Agent</span>
+              <div className={`flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${customStyles.menuItemHover} ${customStyles.agentCardGlow}`}>
+                <div className="w-8 h-8 rounded-full border border-purple-500/30 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0h2a2 2 0 012 2v2a2 2 0 01-2 2H9a2 2 0 01-2-2v-2a2 2 0 012-2z" />
+                  </svg>
+                </div>
+                <span className="text-sm">Market Data Agent</span>
               </div>
-              <div className="flex items-center text-gray-700 px-3 py-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <span>Orderbook Analysis Agent</span>
+              <div className={`flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${customStyles.menuItemHover} ${customStyles.agentCardGlow}`}>
+                <div className="w-8 h-8 rounded-full border border-purple-500/30 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <span className="text-sm">Orderbook Analysis Agent</span>
               </div>
-              <div className="flex items-center text-gray-700 px-3 py-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span>Token Dashboard Agent</span>
+              <div className={`flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${customStyles.menuItemHover} ${customStyles.agentCardGlow}`}>
+                <div className="w-8 h-8 rounded-full border border-purple-500/30 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <span className="text-sm">Token Dashboard Agent</span>
               </div>
             </div>
           </div>
 
           {/* Trading Strategies Section */}
-          <div className="p-6">
-            <h3 className={`text-sm font-medium uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-3`}>Trading Strategies</h3>
+          <div className="p-6 mt-2">
+            <h3 className={`text-xs font-semibold uppercase tracking-wider ${customStyles.textSecondary} mb-3`}>Trading Strategies</h3>
             <div className="space-y-2">
               {Object.entries(strategyPrompts).map(([key, prompt]) => (
                 <button
                   key={key}
                   onClick={() => handleStrategyClick(prompt)}
-                  className={`w-full text-left px-3 py-2 rounded-lg ${
+                  className={`w-full text-left px-3 py-3 rounded-lg ${
                     darkMode 
-                      ? 'hover:bg-gray-800 text-gray-300' 
+                      ? 'hover:bg-white/5 text-gray-300 border border-transparent hover:border-purple-500/20 transition-all duration-200' 
                       : 'hover:bg-gray-100 text-gray-700'
-                  } text-sm transition-colors duration-150 flex items-center justify-between group`}
+                  } text-sm flex items-center justify-between group`}
                 >
                   <span>{strategyDescriptions[key as keyof typeof strategyDescriptions]}</span>
                   <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${
                     darkMode 
-                      ? 'text-gray-500 group-hover:text-gray-400' 
+                      ? 'text-purple-500/50 group-hover:text-purple-500' 
                       : 'text-gray-400 group-hover:text-gray-600'
                   } transition-colors duration-150`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -290,26 +397,32 @@ function App() {
           </div>
           
           {/* Resources */}
-          <div className="p-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}">
-            <h3 className={`text-sm font-medium uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-3`}>Resources</h3>
-            <a href="https://docs.example.com/trading-api" target="_blank" rel="noreferrer" className={`flex items-center text-gray-700 hover:text-blue-600 px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 mr-2 text-gray-400 ${darkMode ? 'text-gray-500' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              API Documentation
-            </a>
-            <a href="https://example.com/tutorials" target="_blank" rel="noreferrer" className={`flex items-center text-gray-700 hover:text-blue-600 px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 mr-2 text-gray-400 ${darkMode ? 'text-gray-500' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Tutorials
-            </a>
+          <div className="p-6 border-t ${customStyles.borderColor}">
+            <h3 className={`text-xs font-semibold uppercase tracking-wider ${customStyles.textSecondary} mb-3`}>Resources</h3>
+            <div className="space-y-1">
+              <a href="https://docs.example.com/trading-api" target="_blank" rel="noreferrer" className={`flex items-center px-3 py-2.5 text-sm ${customStyles.textPrimary} rounded-md ${customStyles.menuItemHover} transition-colors duration-200`}>
+                <div className="w-7 h-7 rounded-full border border-purple-500/30 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                API Documentation
+              </a>
+              <a href="https://example.com/tutorials" target="_blank" rel="noreferrer" className={`flex items-center px-3 py-2.5 text-sm ${customStyles.textPrimary} rounded-md ${customStyles.menuItemHover} transition-colors duration-200`}>
+                <div className="w-7 h-7 rounded-full border border-purple-500/30 flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </div>
+                Tutorials
+              </a>
+            </div>
           </div>
 
           {/* Theme switcher button in the sidebar footer */}
-          <div className={`mt-auto p-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-            <div className="flex items-center text-sm text-gray-500">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+          <div className={`mt-auto p-6 border-t ${customStyles.borderColor} bg-gradient-to-r from-purple-900/10 to-transparent flex justify-between items-center`}>
+            <div className="flex items-center text-sm text-gray-400">
+              <div className="w-2 h-2 bg-green-500 rounded-full mr-2 shadow-lg shadow-green-500/50 animate-pulse"></div>
               <span>System Online</span>
             </div>
             
@@ -318,9 +431,9 @@ function App() {
               onClick={toggleTheme}
               className={`p-2 rounded-full ${
                 darkMode 
-                  ? 'bg-gray-700 text-blue-400 hover:bg-gray-600' 
+                  ? 'bg-gradient-to-br from-gray-700 to-gray-800 text-purple-400 hover:text-purple-300' 
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              } transition-colors`}
+              } transition-all duration-200 shadow-md`}
               aria-label="Toggle theme"
             >
               {darkMode ? (
@@ -340,35 +453,51 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <header className={`py-4 px-6 flex items-center justify-between shadow-sm z-10 ${darkMode ? 'bg-gray-800 shadow-gray-900' : 'bg-white shadow-gray-100'}`}>
+        <header className={`py-4 px-6 flex items-center justify-between shadow-lg z-10 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border-b ${customStyles.borderColor} ${customStyles.textPrimary}`}>
           <div className="flex-1 min-w-0 flex items-center">
             <button 
-              className="md:hidden p-2 mr-3 rounded-md text-gray-500 hover:text-gray-600 hover:bg-gray-100 focus:outline-none"
+              className="md:hidden p-2 mr-3 rounded-md bg-gray-800/50 hover:bg-gray-700 text-purple-400 transition-all duration-200 border border-purple-500/20"
               onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Trading Assistant</h2>
+            <div className="flex items-center">
+              <div className="w-8 h-8 mr-2 rounded-md bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h2 className={`text-xl ${customStyles.fontDisplay} font-bold bg-gradient-to-r from-white via-purple-100 to-white bg-clip-text text-transparent`}>Trading Agent</h2>
+            </div>
           </div>
           
-          <div className="flex space-x-4">
+          <div className="flex items-center space-x-4">
+            <div className="hidden md:flex items-center mr-2 text-xs text-gray-400">
+              <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse shadow-sm shadow-green-500/50"></div>
+              <span>Connected</span>
+            </div>
             <button 
               onClick={handleClearChat} 
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                 darkMode 
-                  ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-gradient-to-r from-gray-700 to-gray-800 text-gray-200 hover:from-gray-600 hover:to-gray-700 border border-purple-500/20 shadow-md' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
               }`}
             >
-              Clear Chat
+              <span className="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Clear Chat
+              </span>
             </button>
           </div>
         </header>
         
         {/* Messages */}
-        <div className={`flex-1 overflow-hidden p-6 chat-container ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+        <div className={`flex-1 overflow-hidden p-6 chat-container ${customStyles.cardGradient} ${customStyles.textPrimary}`}>
           <div className="h-full overflow-y-auto pr-4">
             <div className="space-y-4">
               {messages.map((message, index) => (
@@ -382,8 +511,8 @@ function App() {
                   <div 
                     className={`rounded-lg shadow message-bubble ${
                       message.sender === 'user' 
-                        ? `${darkMode ? 'bg-blue-800' : 'bg-blue-600'} text-white ml-auto mr-4 max-w-2xl user-message` 
-                        : `${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'} ${darkMode ? 'text-gray-200' : ''} border ml-4 mr-auto max-w-2xl agent-message`
+                        ? `${customStyles.accentBg} ${customStyles.textPrimary} ml-auto mr-4 max-w-2xl user-message` 
+                        : `${customStyles.cardGradient} ${customStyles.borderColor} ${customStyles.textPrimary} border ml-4 mr-auto max-w-2xl agent-message`
                     }`}
                     style={{
                       transform: `translateY(${index * 2}px) rotate(${message.sender === 'user' ? '-0.5' : '0.5'}deg)`,
@@ -391,20 +520,20 @@ function App() {
                     }}
                   >
                     {message.sender === 'agent' && (
-                      <div className={`flex items-center p-3 border-b ${darkMode ? 'border-gray-600' : 'border-gray-100'}`}>
-                        <div className={`w-8 h-8 rounded-full ${darkMode ? 'bg-blue-900' : 'bg-blue-100'} flex items-center justify-center mr-2`}>
-                          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className={`flex items-center p-3 border-b ${customStyles.borderColor}`}>
+                        <div className={`w-8 h-8 rounded-full ${customStyles.accentBg} flex items-center justify-center mr-2`}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${customStyles.accentColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                           </svg>
                         </div>
-                        <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Orchestration Agent</span>
+                        <span className={`font-medium ${customStyles.textPrimary}`}>Orchestration Agent</span>
                       </div>
                     )}
-                    <div className={`p-4 ${message.sender === 'user' ? 'text-white' : darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                    <div className={`p-4 ${message.sender === 'user' ? customStyles.textPrimary : customStyles.textPrimary}`}>
                       {message.sender === 'agent' ? formatMessage(message.text) : message.text}
                     </div>
                     <div className={`px-4 pb-2 text-xs ${
-                      message.sender === 'user' ? 'text-blue-200' : darkMode ? 'text-gray-400' : 'text-gray-500'
+                      message.sender === 'user' ? 'text-blue-200' : customStyles.textSecondary
                     }`}>
                       {message.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </div>
@@ -413,14 +542,21 @@ function App() {
               ))}
               {isProcessing && (
                 <div className="message-container">
-                  <div className={`${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'} border rounded-lg p-4 shadow ml-4 mr-auto max-w-2xl`} style={{ transform: 'rotate(0.5deg)' }}>
+                  <div className={`${customStyles.cardGradient} ${customStyles.borderColor} border rounded-lg p-4 shadow ml-4 mr-auto max-w-2xl`} style={{ transform: 'rotate(0.5deg)' }}>
                     <div className="flex items-center">
-                      <div className="typing-indicator mr-2">
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                      <div className="w-8 h-8 rounded-full border border-purple-500/30 flex items-center justify-center mr-3 bg-gradient-to-br from-purple-600/20 to-pink-600/10">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
                       </div>
-                      <span className={`${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>Processing your request...</span>
+                      <div className="flex flex-col">
+                        <span className={`${customStyles.fontDisplay} text-sm font-semibold bg-gradient-to-r from-purple-400 to-pink-300 bg-clip-text text-transparent`}>Agent is thinking...</span>
+                        <div className="typing-indicator mt-1">
+                          <span className="bg-purple-400"></span>
+                          <span className="bg-pink-400"></span>
+                          <span className="bg-purple-300"></span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -432,8 +568,8 @@ function App() {
         
         {/* Quick Suggestions */}
         {!isProcessing && messages.length < 3 && (
-          <div className="px-6 py-3 bg-white border-t border-gray-200">
-            <p className="text-xs text-gray-500 mb-2">Try asking:</p>
+          <div className="px-6 py-3 bg-transparent">
+            <p className={`text-xs ${customStyles.textSecondary} mb-2`}>Try asking:</p>
             <div className="flex flex-wrap gap-2">
               {quickSuggestions.map((suggestion, index) => (
                 <button 
@@ -442,7 +578,7 @@ function App() {
                     setInput(suggestion);
                     setTimeout(() => handleSend(), 100);
                   }}
-                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm rounded-full"
+                  className={`px-3 py-1.5 ${customStyles.textPrimary} text-sm rounded-full bg-white/5 hover:bg-white/10 border border-purple-500/30 transition-colors duration-200`}
                 >
                   {suggestion}
                 </button>
@@ -452,14 +588,14 @@ function App() {
         )}
         
         {/* Input */}
-        <div className={`p-4 border-t ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className={`flex items-start ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg p-1 shadow-inner`}>
+        <div className={`p-4 border-t ${customStyles.borderColor}`}>
+          <div className={`flex items-start ${customStyles.inputBg} rounded-lg p-1 shadow-inner transition-all duration-300 focus-within:shadow-purple-500/20 focus-within:border focus-within:border-purple-500/30`}>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
               placeholder="Ask about market data, technical analysis, trade execution, or any crypto trading topic... (Shift+Enter for new line)"
-              className={`flex-1 bg-transparent px-3 py-2 rounded focus:outline-none resize-none min-h-[44px] max-h-[120px] overflow-y-auto ${darkMode ? 'text-gray-200 placeholder-gray-400' : ''}`}
+              className={`flex-1 bg-transparent px-3 py-2 rounded ${customStyles.inputFocus} focus:outline-none resize-none min-h-[44px] max-h-[120px] overflow-y-auto ${customStyles.textPrimary}`}
               disabled={isProcessing}
               rows={Math.min(4, input.split('\n').length || 1)}
               style={{ height: `${Math.min(120, Math.max(44, 20 * (input.split('\n').length || 1)))}px` }}
@@ -467,13 +603,23 @@ function App() {
             <button
               onClick={handleSend}
               disabled={isProcessing || !input.trim()}
-              className={`p-2 rounded-md text-white self-end ${
-                isProcessing || !input.trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+              className={`p-2 rounded-md text-white self-end transition-all duration-300 transform ${
+                isProcessing || !input.trim() 
+                  ? 'bg-gray-500/50 cursor-not-allowed' 
+                  : `${customStyles.buttonGradient} ${customStyles.buttonShadow} hover:scale-105 ${customStyles.buttonHoverGradient}`
               }`}
+              aria-label="Send message"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m-7-7H3" />
-              </svg>
+              {isProcessing ? (
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m-7-7H3" />
+                </svg>
+              )}
             </button>
           </div>
         </div>

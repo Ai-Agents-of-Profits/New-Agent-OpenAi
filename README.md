@@ -37,6 +37,79 @@ The Trading Assistant operates on a multi-agent architecture:
   - Markdown-formatted agent responses
   - Syntax-highlighted code snippets
 
+## Agent Architecture & Features
+
+### Agent System Architecture
+
+The Trading Assistant uses a sophisticated agent architecture with specialized component agents working together:
+
+- **Agent Handoff System**: The system utilizes a coordinated handoff mechanism where:
+  - The Orchestration Agent analyzes user queries and determines which specialized agent to invoke
+  - Tasks are delegated to specialized agents based on their expertise
+  - Seamless transitions between different agents through a structured handoff protocol
+  - Results from specialized agents are integrated into a coherent response
+
+- **Guardrail System**: Multiple layers of protection ensure safe operation:
+  - **Input Validation Guardrails**: Filter harmful, irrelevant, or nonsensical requests
+  - **Trading Request Validation**: Ensures trade requests contain necessary parameters
+  - **Market Data Validation**: Verifies market data requests have valid symbols
+  - **Execution Validation**: Risk assessment for trade execution requests
+  - **Position Size Guardrails**: Prevents excessive position sizing
+  - **API Security Guardrails**: Prevents exposure of sensitive information
+
+- **Agent Runner System**:
+  - Manages parallel execution of multiple agents
+  - Handles asynchronous processing of agent tasks
+  - Maintains conversation state and context
+  - Provides synchronization between agents and tools
+
+- **Tool Integration**:
+  - Agents use function-calling to access specialized tools
+  - Exchange connector tools provide access to market data and trading operations
+  - Data processing tools for technical analysis and visualization
+  - Order parser tools to interpret trade instructions
+
+### Processing Flow
+
+1. **Input Processing**:
+   - User input is received via the web interface
+   - Text is processed by the Orchestration Agent for intent recognition
+   - Guardrails validate the request for safety and completeness
+
+2. **Specialized Agent Selection**:
+   - Based on intent analysis, the appropriate specialized agent is selected
+   - Context is preserved and handed off to specialized agents
+   - For complex requests, multiple agents may be activated in sequence
+
+3. **Analysis & Execution**:
+   - Specialized agents perform their designated tasks
+   - Real-time data is fetched from exchanges
+   - Technical and market analysis is performed
+   - Trading signals are generated based on analysis
+   - Trade execution proceeds when authorized
+
+4. **Response Integration**:
+   - Results from specialized agents are collected
+   - Orchestration Agent formats a coherent response
+   - Information is presented in a user-friendly format
+   - Conversation state is updated for context continuity
+
+### Binance Exchange Integration
+
+- **Exchange Connectivity**:
+  - Secure connection to Binance USDM Futures API
+  - Robust error handling for API rate limits and connectivity issues
+  - Automatic timestamp synchronization
+  - Configurable timeout and retry mechanisms
+
+- **Trading Operations**:
+  - Market and limit order placement
+  - Position management (modify, close)
+  - Stop-loss and take-profit order creation
+  - Trailing stop functionality
+  - Leverage adjustment
+  - Account balance monitoring
+
 ## Setup Instructions
 
 ### Prerequisites

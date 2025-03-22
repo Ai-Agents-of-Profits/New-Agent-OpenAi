@@ -19,8 +19,9 @@ class ExecuteTradeRequest(BaseModel):
     symbol: str = Field(..., description="Trading pair symbol (e.g., 'BTC/USDT')")
     side: str = Field(..., description="Trade direction ('buy' or 'sell')")
     amount: float = Field(..., description="Position size to trade")
-    order_type: str = Field(..., description="Order type ('market' or 'limit')")
+    order_type: str = Field(..., description="Order type ('market', 'limit', or 'stop_limit')")
     price: Optional[float] = Field(None, description="Price for limit orders")
+    stop_price: Optional[float] = Field(None, description="Stop trigger price for stop-limit orders")
     leverage: Optional[int] = Field(None, description="Leverage level (1-125)")
     stop_loss: Optional[float] = Field(None, description="Stop loss price level")
     take_profit: Optional[float] = Field(None, description="Take profit price level")
@@ -220,7 +221,7 @@ class ExecutionAgent(BaseMarketAgent):
     
     async def _execute_trade(self, params: ExecuteTradeRequest) -> Dict[str, Any]:
         """
-        Execute a trade on a cryptocurrency exchange.
+        Execute a trade on a cryptocurrency exchange with support for conditional (stop-limit) orders.
         
         Args:
             params: Parameters for the trade execution
@@ -246,7 +247,8 @@ class ExecutionAgent(BaseMarketAgent):
                             "error": f"Failed to set leverage: {str(e)}"
                         }
                 
-                # Execute the trade
+                # Execute the trade based on order type
+                order = None
                 if params.order_type.lower() == "market":
                     order = await connector.create_market_order(
                         symbol=params.symbol,
@@ -260,15 +262,27 @@ class ExecutionAgent(BaseMarketAgent):
                         amount=params.amount,
                         price=params.price
                     )
+                elif params.order_type.lower() == "stop_limit" and params.price and params.stop_price:
+                    # For stop-limit orders, we need both the stop trigger price and the limit price
+                    order_params = {'stopPrice': params.stop_price}
+                    order = await connector.create_order(
+                        symbol=params.symbol,
+                        type='STOP_LIMIT',
+                        side=params.side.lower(),
+                        amount=params.amount,
+                        price=params.price,
+                        params=order_params
+                    )
+                    logger.info(f"Placed stop-limit order for {params.symbol}: Stop at {params.stop_price}, Limit at {params.price}")
                 else:
                     return {
                         "success": False,
-                        "error": "Invalid order type or missing price for limit order"
+                        "error": "Invalid order type or missing required parameters. For stop_limit orders, both price and stop_price are required."
                     }
                 
-                # Set stop loss if provided
+                # Set stop loss if provided (only for non-stop-limit entry orders)
                 stop_loss_order = None
-                if params.stop_loss:
+                if params.stop_loss and params.order_type.lower() != "stop_limit":
                     try:
                         # Determine the stop loss side (opposite of the entry order)
                         sl_side = "sell" if params.side.lower() == "buy" else "buy"
